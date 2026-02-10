@@ -1,0 +1,11 @@
+FEATURE_COLS = [
+    'returns', 'log_returns', 'volatility_20', 
+    'rsi_14', 'macd', 'macd_signal', 'macd_hist',
+    'close_loc', 'high_loc', 'low_loc' 
+]
+
+TARGET DEFINITION:
+- Primary: Log Return at t+1 (Quantile Reg)
+- Auxiliary: Direction (Binary Classification) of cumulative return over next 5 days (t+1 to t+5).
+  - Masked if |return| < 0.3 * Volatility (Neutral Zone).
+- Auxiliary: Regime (Multi-class) based on Volatility Percentiles (33, 66).
