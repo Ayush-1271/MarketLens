@@ -18,6 +18,11 @@ st.set_page_config(page_title="MarketLens", layout="wide")
 st.title("🛡️ MarketLens")
 st.markdown("**Regime-Aware Market Analysis** | Uncertainty Diagnostics | Decision Support")
 
+st.warning("""
+**Important:** This system provides a **risk-aware outlook**, not investment advice. 
+It focuses on uncertainty, market conditions, and data reliability rather than exact price predictions.
+""")
+
 # ---------------------------------------------------------
 # CACHED FUNCTIONS
 # ---------------------------------------------------------
@@ -153,6 +158,14 @@ st.sidebar.subheader("Model Settings")
 use_best_auc = st.sidebar.checkbox("Use Best AUC Model", value=True, help="Load the checkpoint optimized for Directional Accuracy instead of RMSE.")
 neutral_tolerance = st.sidebar.slider("Neutral Tolerance", 0.0, 0.4, 0.05, 0.01, help="Probability margin around the threshold to declare 'Neutral'.")
 
+with st.sidebar.expander("How to Read This Dashboard"):
+    st.markdown("""
+    *   **Outlook ≠ Certainty**: Ranges (P10-P90) are more important than single numbers.
+    *   **Confidence Matters**: 'Neutral' means the signal is too weak to trust.
+    *   **Market Condition**: A volatile market makes all predictions less reliable.
+    *   **Diagnostics**: Check the 'Stability' tab to see if the model is behaving correctly.
+    """)
+
 # Store in session state
 if 'loaded_ticker' not in st.session_state:
     st.session_state['loaded_ticker'] = None
@@ -172,7 +185,7 @@ if st.session_state.loaded_ticker:
         st.success(f"System Ready: {status}")
         
         # Tabs
-        tab1, tab2, tab3, tab4 = st.tabs(["Market Overview", "Forecast & Drift", "Diagnostics", "Performance & Metrics"])
+        tab1, tab2, tab3, tab4 = st.tabs(["Market Overview", "5-Day Market Outlook", "Model Stability & Diagnostics", "Model Quality Checks"])
         
         # Load Raw Data for Viz
         raw_df = loader._load_raw_data()
@@ -190,19 +203,20 @@ if st.session_state.loaded_ticker:
             st.plotly_chart(fig, width="stretch")
             
         with tab2:
-            st.header("Probabilistic Forecast")
+            st.header("5-Day Market Outlook")
             st.markdown("""
-            **How to read this:**
-            *   **P50 (Median)**: The model's "best guess" for the return.
-            *   **Confidence Band**: The range (P10 to P90) where the model is 80% sure the actual return will fall. 
-            *   **Direction**: Uses the *Optimal Threshold* from validation to decide Up/Down, with a configurable "Neutral" buffer.
+            **What this shows:**
+            This section estimates how the asset might behave over the next 5 trading days.
+            *   **Expected Outcome**: The model's "best guess" (Median) for the return.
+            *   **Likely Range**: In 8 out of 10 scenarios, the return is expected to fall within this band. Wider bands = Higher Uncertainty.
+            *   **Trend Confidence**: We only flag a trend if the model is statistically confident. Otherwise, we stay Neutral.
             """)
             
             # Select a date for inference
             dates = df_analyzed['date'].dt.date
             # Only allow selecting from dates where we have enough history
             valid_dates = dates.iloc[config.MAX_SEQ_LEN:].values
-            selected_date = st.select_slider("Select Date for Prediction", options=valid_dates, value=valid_dates[-1])
+            selected_date = st.select_slider("Select Date for Outlook", options=valid_dates, value=valid_dates[-1])
             
             # Find index
             idx = df_analyzed[df_analyzed['date'].dt.date == selected_date].index[0]
@@ -215,9 +229,9 @@ if st.session_state.loaded_ticker:
             # Run Inference
             ret_pred, dir_pred, reg_pred_logits, lat = perform_inference(model, feature_slice_scaled)
             
-            st.metric("Inference Latency", f"{lat:.2f} ms", help="Time taken for the CPU to generate this prediction. Must be <100ms.")
+            st.metric("Analysis Latency", f"{lat:.2f} ms", help="Time taken for the CPU to analyze the data. This is NOT execution latency.")
             if lat > 100:
-                st.error("Latency Constraint Violated (>100ms)")
+                st.caption("Note: Latency > 100ms. This is fine for analysis, but would be slow for HFT.")
             
             # Parse Outputs
             q10, q50, q90 = ret_pred[0].numpy()
@@ -230,52 +244,91 @@ if st.session_state.loaded_ticker:
             if metrics_all and "deep_model" in metrics_all:
                 best_thresh = metrics_all["deep_model"].get("Best_Threshold", 0.5)
             
+            # Trust Logic
+            uncertainty = q90 - q10
+            is_high_uncertainty = uncertainty > 0.05
+            is_volatile = regime_name == "High_Vol"
+            
+            trust_level = "Reliable"
+            trust_color = "green"
+            trust_reason = "Conditions are calm and model is confident."
+            
+            if is_volatile:
+                trust_level = "Do Not Trust"
+                trust_color = "red"
+                trust_reason = "Market is too volatile for accurate predictions."
+            elif is_high_uncertainty:
+                trust_level = "Uncertain"
+                trust_color = "orange"
+                trust_reason = "Model predicts a wide range of possible outcomes."
+                
+            st.subheader("🤖 What the Model says")
+            st.info(f"**Verdict**: {trust_level} ({trust_reason})")
+            
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.subheader("Return Prediction")
-                st.write(f"P50 (Median): **{q50:.4f}**")
-                st.write(f"Uncertainty (P90-P10): {q90-q10:.4f}")
-                st.info(f"Band: [{q10:.4f}, {q90:.4f}]")
-            
+                st.markdown("#### 1. Best Guess")
+                st.write(f"Expected Return: **{q50:.4f}**")
+                st.caption("If you made this trade 100 times, this is the average outcome.")
+                
             with col2:
-                st.subheader("5-Day Trend")
-                st.write(f"Probability UP: **{direction_prob:.2%}**")
-                st.caption(f"Threshold: {best_thresh:.2f} ± {neutral_tolerance:.2f}")
-                
-                # Neutral Zone Logic
-                upper = best_thresh + neutral_tolerance
-                lower = best_thresh - neutral_tolerance
-                
-                if direction_prob > upper:
-                    st.success("BULLISH Trend")
-                elif direction_prob < lower:
-                    st.error("BEARISH Trend")
-                else:
-                    st.warning("NEUTRAL / UNCERTAIN")
-                    
+                st.markdown("#### 2. Range")
+                st.write(f"Between **{q10:.4f}** and **{q90:.4f}**")
+                st.caption("In 8 out of 10 cases, the price lands here.")
+            
             with col3:
-                st.subheader("Regime")
-                st.write(f"Detected: **{regime_name}**")
-                st.caption(f"Market Condition: {regime_name}")
+                st.markdown("#### 3. Market State")
+                
+                # Simple mapping
+                condition_map = {
+                    "Low_Vol": "Calm",
+                    "Medium_Vol": "Normal",
+                    "High_Vol": "Unstable"
+                }
+                friendly_condition = condition_map.get(regime_name, regime_name)
+                
+                st.write(f"Condition: **{friendly_condition}**")
+                if regime_name == "High_Vol":
+                    st.error("⚠️ Unstable: Predictions are likely wrong.")
+                else:
+                    st.caption("Calm markets are easier to predict.")
+
+            st.markdown("---")
+            st.subheader("🚦 Trend Confidence")
+            
+            # Neutral Zone Logic
+            upper = best_thresh + neutral_tolerance
+            lower = best_thresh - neutral_tolerance
+            
+            if direction_prob > upper:
+                st.success(f"**Bullish ({direction_prob:.0%} Confidence)**")
+                st.write("Why? The model sees strong patterns usually followed by a price rise.")
+            elif direction_prob < lower:
+                st.error(f"**Bearish ({1-direction_prob:.0%} Confidence)**")
+                st.write("Why? The patterns resemble past drops. Note: This doesn't guarantee a crash.")
+            else:
+                st.warning("**Neutral / Unclear**")
+                st.write("Why? The signals are mixed. The model cannot confidently say Up or Down.")
                 
             # Drift Warning
             vol_idx = config.FEATURE_COLS.index("volatility_20")
             current_vol_z = feature_slice_scaled[-1, vol_idx]
             
             if np.abs(current_vol_z) > 3.0:
-                 st.warning(f"⚠️ DRIFT DETECTED: Volatility Z-Score {current_vol_z:.2f} > 3.0. Prediction Low Confidence.")
+                 st.error(f"⚠️ **Stability Check Failed**: Market is moving abnormally fast (Z-Score {current_vol_z:.2f}). Ignore this forecast.")
             
         with tab3:
-            st.header("Diagnostics")
+            st.header("Model Stability & Diagnostics")
             st.markdown("""
-            **What is this?**
-            Diagnostics help you trust the model by showing where it fails.
-            *   **Residuals**: The difference between the Actual Return and the Predicted Return. Ideally, these should be close to zero and randomly scattered.
-            *   **Stress Test**: How the model would have performed during the 2020 Market Crash.
+            **Why this matters:**
+            This section tests whether the model is behaving safely.
+            *   **Behavior During Crisis**: We simulate the 2020 crash to ensure the model doesn't "panic" or produce impossible values.
+            *   **Stability**: We check if the model's errors are random (good) or biased (bad).
             """)
             
             # 1. Stress Test: COVID-19
-            st.subheader("⚠️ Stress Test: COVID-19 Crash (March 2020)")
+            st.subheader("🛡️ Behavior During Market Crises (Scenario: COVID-19)")
+            st.write("Simulating model performance during the March 2020 crash...")
             
             # hardcoded date range for COVID
             covid_start = pd.Timestamp("2020-02-01")
@@ -322,16 +375,25 @@ if st.session_state.loaded_ticker:
                     fig_stress.add_trace(go.Scatter(x=stress_dates, y=s_true, name="Actual Return", line=dict(color='blue')), row=2, col=1)
                     fig_stress.add_trace(go.Scatter(x=stress_dates, y=s_p50, name="Predicted Return", line=dict(color='red', dash='dot')), row=2, col=1)
                     
-                    fig_stress.update_layout(title="COVID-19 Crash Performance", height=500)
+                    fig_stress.update_layout(title="Did the model panic?", height=500)
                     st.plotly_chart(fig_stress, width="stretch")
                     
                     stress_mse = np.mean((s_true - s_p50)**2)
-                    st.write(f"Stress Period MSE: **{stress_mse:.5f}**")
+                    
+                    st.info("""
+                    **Professor's Note:**
+                    *   **Did it panic?** Look at the red dotted line. Did it jump around wildly, or follow the blue line loosely?
+                    *   **Realistic?** During a crash, NO model is perfect. We want to see it react, not freeze.
+                    """)
+                    st.caption(f"Error during this period (MSE): {stress_mse:.5f}")
 
             st.markdown("---")
             
+            st.markdown("---")
+            
             # 2. Residual Analysis (Last 1 Year)
-            st.subheader("Residual Analysis (Last 1 Year)")
+            st.subheader("Stability Analysis (Residuals)")
+            st.caption("Checking for systematic bias. Errors should be centered around zero.")
             if len(df_analyzed) > 365:
                 recent_indices = df_analyzed.index[-365:]
             else:
@@ -366,11 +428,18 @@ if st.session_state.loaded_ticker:
                 
                 # Distribution
                 fig_dist = go.Figure(data=[go.Histogram(x=residuals, nbinsx=50, name='Residuals')])
-                fig_dist.update_layout(title="Residual Distribution (Normality Check)")
+                fig_dist.update_layout(title="Are errors random? (Bell Curve check)")
                 st.plotly_chart(fig_dist, width="stretch")
+                
+                st.info("""
+                **Verdict:** 
+                *   If the dots (residuals) are scattered randomly around the white line, the model is **Healthy**.
+                *   If they follow a curve or line, the model is **Biased (Unreliable)**.
+                """)
             
         with tab4:
-             st.header("Model Performance & Metrics")
+             st.header("Model Quality Checks")
+             st.markdown("These metrics are used internally to validate that the model is performing better than random chance and simple baselines.")
              
              if metrics_all:
                  # 1. Create Comparison DataFrame
@@ -422,23 +491,30 @@ if st.session_state.loaded_ticker:
                          d_rmse = deep_row.iloc[0]["RMSE"]
                          
                          col_i1, col_i2 = st.columns(2)
-                         col_i1.metric("Deep Model AUC", f"{d_auc:.3f}")
-                         col_i1.caption("Target > 0.55")
+                         col_i1.metric("Predictive Power (AUC)", f"{d_auc:.2f}")
+                         col_i1.caption("0.50 = Random Guessing. 0.55+ is Good.")
                          
                          if not base_row.empty:
                              b_rmse = base_row.iloc[0]["RMSE"]
                              impr = (1 - d_rmse/b_rmse) * 100
-                             col_i2.metric("RMSE Improvement", f"{impr:.2f}%")
+                             col_i2.metric("Error Reduction", f"{impr:.1f}%")
+                             col_i2.caption("How much better than a simple average?")
                          
                          if d_auc > 0.55:
-                             st.success(f"✅ Strong Directional Signal (AUC {d_auc:.3f}). Model is detecting trends.")
+                             st.success(f"✅ **Good Model**: AUC ({d_auc:.2f}) is consistently better than a coin flip.")
                          elif d_auc < 0.50:
-                             st.error(f"❌ Model is anti-correlated (AUC {d_auc:.3f}). Something is wrong.")
+                             st.error(f"❌ **Bad Model**: AUC ({d_auc:.2f}) is worse than random. Do not use.")
                          else:
-                             st.warning(f"⚠️ Weak Signal (AUC {d_auc:.3f}). Model is guessing close to random.")
+                             st.warning(f"⚠️ **Weak Model**: AUC ({d_auc:.2f}) is barely better than random.")
                              
-                 else:
-                     st.warning("Metrics file exists but contains no data.")
+                         st.markdown("""
+                         **Professor's Explanation:**
+                         *   **AUC (Area Under Curve)**: Measures how often the model gets the *direction* right. 0.50 is random (like a coin flip). Anything above 0.55 is hard to achieve in finance.
+                         *   **RMSE (Error)**: Measures how far off the price predictions are. Lower is better. We compare it to a "Rolling Mean" (simple average) to see if the complex model is actually adding value.
+                         """)
+                              
+                     else:
+                         st.warning("Metrics file exists but contains no data.")
              else:
                  st.warning("No metrics_all.json found. Run experiments first.")
 
