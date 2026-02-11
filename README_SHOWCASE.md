@@ -1,70 +1,170 @@
-# 📈 Regime-Aware Stock Trend System: A Business Overview
+# 🔍 MarketLens — Idea, Reasoning & Results
 
-## 🎯 The Philosophy: Don't Predict Price, Predict *Advantage*
-Most AI models fail in finance because they try to predict the exact price tomorrow. This is mathematically impossible due to noise. 
-
-**We take a different approach:**
-Instead of guessing the *noise*, we categorize the *signal*.
+> *Understanding markets is often about knowing when **not** to trust a signal.*
 
 ---
 
-## 💡 Core Innovations
+## ❓ What Problem Is This Trying to Solve?
 
-### 1. "Signal First" Architecture (Hybrid CNN-Transformer)
-We combine two specialized neural networks to find edge:
-*   **The Scanner (CNN)**: Like a technical trader, it spots immediate patterns—volatility shifts, momentum breaks, and sudden volume spikes.
-*   **The Analyst (Transformer)**: Like a macro strategist, it remembers 6 months of context to decide if the current move is a trend or a trap.
+Financial markets are noisy, complex, and unpredictable.
 
-### 2. The "Wait for Signal" Gate (AUC > 0.55)
-A bad model is worse than no model. Our system is rigorous:
-*   **Automatic Rejection**: If a model cannot beat random chance (AUC > 0.55) or a simple Moving Average rule, it is **automatically discarded**.
-*   **Result**: We only deploy models that have statistically significant predictive power.
+Most AI systems try to answer one question:
 
-### 3. Direction Over Magnitude
-We focus on the 5-Day Trend (Up vs Down).
-*   **Why?** Predicting *how much* a stock will move is hard. Predicting *where* it is going is easier and more profitable.
-*   **Neutral Zone**: 
-    *   **Training**: We ignore small moves (noise) so the model learns only from significant trends.
-    *   **Trading**: If the model's confidence is low (e.g., 52% prob), we stay in **Cash** (Neutral). We only trade when the signal is strong.
+> **“Where will the price go next?”**
 
-### 4. Profitability Validation (Backtesting)
-Metrics like "Loss" are for machines. "Sharpe Ratio" is for humans.
-*   We interpret our models through a **Backtest Simulator** that trades the Test Set.
-*   This proves whether the AI's "accuracy" actually translates to **Profit & Loss (PnL)**.
+MarketLens asks a more careful question:
+
+> **“When should a market signal be trusted — and when should it not?”**
+
+This shift in focus is intentional.
 
 ---
 
-## ⚠️ Important Disclaimer
-*   **Not Financial Advice**: This system is a research tool. Real-world trading involves costs (slippage, fees, spread) not fully modeled here.
-*   **Success Metrics**: A "Successful" model has a consistent **AUC > 0.55** across multiple tickers and positive backtest returns. Note that market regimes change, and past performance is not a guarantee of future results.
+## 💡 The Core Idea (In Simple Terms)
+
+Markets behave differently under different conditions.
+
+The **same price movement** can mean very different things:
+
+- In a calm market → it may carry useful information  
+- In a chaotic market → it may be nothing more than noise  
+
+**MarketLens is designed to:**
+- recognize **market conditions**
+- estimate **ranges of possible outcomes**
+- communicate **uncertainty clearly**
+
+Instead of forcing a confident answer, it allows the system to say:
+
+> *“There isn’t enough reliable signal right now.”*
 
 ---
 
-## 🛡️ Selection Policy: Quality over Quantity
+## 🌦️ Why Regime Awareness Matters
 
-1.  **Mass Screening**: We scan thousands of tickers with lightweight algorithms to find candidates (Baseline RMSE).
-2.  **Deep Training**: We train complex Hybrid Models on the top 50 candidates.
-3.  **The Acceptance Gate**: We ONLY keep the model if it proves itself:
-    *   **RMSE check**: Beat the Rolling Mean?
-    *   **AUC check**: Beat random chance (> 0.55)?
-    *   If not, it is discarded.
+MarketLens groups market behavior into **volatility regimes**:
+
+- 🟢 Calm  
+- 🟡 Unstable  
+- 🔴 Highly Volatile  
+
+These regimes are **learned from data**, not manually labeled.
+
+Why this matters:
+- Patterns do not mean the same thing in every market condition
+- Confidence should decrease as volatility increases
+- Signals should always be interpreted **in context**
+
+Regime awareness helps prevent overconfidence during turbulent periods.
 
 ---
 
-## 💻 Hardware Agnostic
-This system is built to run anywhere, democratizing high-end financial ML:
-*   **NVIDIA GPU**: Full CUDA acceleration for fastest training.
-*   **Intel/AMD AI PCs**: Leverages **NPU** (Neural Processing Unit) via DirectML.
-*   **Standard Laptop**: Optimized to run inference on a standard CPU in <100ms.
+## 🔮 How Forecasts Are Meant to Be Read
+
+MarketLens does **not** output a single prediction.
+
+Instead, it provides:
+- a **median expectation** (best guess)
+- a **range of likely outcomes**
+- an explicit measure of **uncertainty**
+
+A helpful analogy is a **weather forecast**:
+- A range is more informative than a single number
+- Wider ranges signal less certainty
+- Calm conditions allow clearer expectations
 
 ---
 
-## 🏆 Summary: Why This Matters
-| Feature | Old School AI | Our System |
-| :--- | :--- | :--- |
-| **Goal** | Guess Price ($100.52) | **Capture Trend (Up/Down)** |
-| **Validation** | "Low Error" | **"High Sharpe Ratio"** |
-| **Context** | Blind to Volatility | **Adapts to Market Regimes** |
-| **Reliability** | Hallucinates Patterns | **Rejects Noise (AUC Check)** |
+## 🧭 Direction Is About Confidence — Not Advice
 
-*Built for robust, statistically significant edge.*
+When MarketLens reports a directional outlook:
+
+- **Up** → sufficient evidence for upward movement  
+- **Down** → insufficient evidence for upward movement  
+- **Neutral** → mixed or weak signals  
+
+Important clarification:
+
+> **“Down” does not mean a sharp fall is expected.**
+
+It simply means the confidence threshold for an upward signal was not met.
+
+This design avoids turning uncertainty into misleading advice.
+
+---
+
+## 🚫 Why Some Assets Are Rejected
+
+MarketLens does not attempt to model every stock.
+
+Assets may be rejected when:
+- data is insufficient
+- price movements are extremely imbalanced
+- directional labels collapse into a single outcome
+
+This is intentional.
+
+> *A weak or unreliable model is worse than no model at all.*
+
+Rejection is treated as a **safety feature**, not a failure.
+
+---
+
+## 🧪 Stability During Market Stress
+
+MarketLens was evaluated during extreme periods  
+(e.g., the COVID-19 market crash).
+
+The goal was **not** to predict the crash.
+
+Instead, the system checks:
+- whether predictions remain bounded
+- whether uncertainty increases appropriately
+- whether behavior stays stable under stress
+
+This helps assess robustness in real-world conditions.
+
+---
+
+## 📊 What the Results Show
+
+Across tested assets:
+
+- Probabilistic ranges widen during volatile periods
+- Directional confidence decreases when noise dominates
+- Some assets show learnable structure, others do not
+- Uncertainty is surfaced rather than hidden
+
+This behavior is considered a **feature**, not a limitation.
+
+---
+
+## 🧠 What This System Is — and Is Not
+
+**MarketLens is:**
+- a diagnostic market analysis system
+- an uncertainty-aware forecasting tool
+- a way to reason about market behavior
+
+**MarketLens is not:**
+- a trading strategy
+- a price oracle
+- a buy/sell recommendation engine
+
+---
+
+## ⭐ Key Takeaway
+
+In financial markets:
+
+> **Knowing when *not* to trust a signal is as important as finding one.**
+
+MarketLens demonstrates how prioritizing **context, uncertainty, and validation**
+leads to more honest and reliable insights.
+
+---
+
+## ⚠️ Disclaimer
+
+This project is for **educational and research purposes only**.  
+It does not provide financial advice.
